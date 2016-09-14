@@ -166,7 +166,7 @@ public class Wikidata implements KB {
     }
 
     public int getNumberOfEntitiesOfType(String type) {
-        log.info("Getting type set size of type: " + type);
+        log.info("Getting number of entities that share the type: " + type);
         String[] fs = type.split(":::");
         String prop = fs[0], value = fs[1];
         String q = "SELECT (COUNT(?p) AS ?value) WHERE { \n" +
@@ -194,6 +194,10 @@ public class Wikidata implements KB {
             ie.printStackTrace();
         }
         return 0;
+    }
+
+    public String[] getPropertiesOfLabel(){
+        return new String[]{"http://www.w3.org/2000/01/rdf-schema#label","http://www.w3.org/2004/02/skos/core#altLabel"};
     }
 
     public static void main(String[] args) {

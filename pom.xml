@@ -5,7 +5,7 @@
   <artifactId>TSem</artifactId>
   <packaging>jar</packaging>
   <version>0.01</version>
-  <name>quizzy</name>
+  <name>TSem</name>
   <url>http://maven.apache.org</url>
   <dependencies>
     <dependency>
@@ -38,7 +38,12 @@
           <artifactId>google-collections</artifactId>
           <version>1.0</version>
       </dependency>
-
+      <!-- https://mvnrepository.com/artifact/cc.mallet/mallet -->
+      <dependency>
+          <groupId>cc.mallet</groupId>
+          <artifactId>mallet</artifactId>
+          <version>2.0.7-RC2</version>
+      </dependency>
 
   </dependencies>
   

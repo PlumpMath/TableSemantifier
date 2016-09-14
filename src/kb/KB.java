@@ -31,4 +31,10 @@ public interface KB {
     /**
      * Given a type of entity, returns the number of unique entities of this type in the database*/
     int getNumberOfEntitiesOfType(String type);
+
+    /**
+     * Get the property that corresponds to label of the resource
+     * For example the label value in Wikidata corresponds to: http://www.w3.org/2000/01/rdf-schema#label", "http://www.w3.org/2004/02/skos/core#altLabel"
+     * such as in --  http://www.w3.org/2000/01/rdf-schema#label="Joanne K. Rowling"@en*/
+    String[] getPropertiesOfLabel();
 }

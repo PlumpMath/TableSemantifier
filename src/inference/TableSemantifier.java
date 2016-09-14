@@ -1,8 +1,12 @@
 package inference;
+import cc.mallet.grmm.types.FactorGraph;
+import cc.mallet.grmm.types.TableFactor;
+import cc.mallet.grmm.types.Variable;
 import com.google.common.collect.Multimap;
 import kb.KB;
 import kb.Wikidata;
 import opennlp.tools.util.Span;
+import util.Table;
 import util.Util;
 
 import java.util.*;
@@ -59,64 +63,6 @@ public class TableSemantifier {
         log.setLevel(Level.FINEST);
     }
 
-    static class TCell {
-        String text;
-        //annotation
-        int st, end;
-        String dbId;
-
-        TCell(String text) {
-            this.text = text;
-        }
-    }
-
-    static class Table {
-        int ncols = 0;
-
-        List<String> headers = new ArrayList<>();
-        List<List<TCell>> data = new ArrayList<>();
-
-        //semantics related stuff
-        //the type of each column described in text
-        String[] colTypes;
-        //the binary relation between every pair of columns described in text
-        String[][] binaryRels;
-
-        public Table(int ncols) {
-            this.ncols = ncols;
-            colTypes = new String[ncols];
-            binaryRels = new String[ncols][ncols];
-        }
-
-        public void addRow(String[] rowData) {
-            if (rowData == null || rowData.length != ncols) {
-                log.severe("Ignoring invalid row data in table creation!");
-                return;
-            }
-            data.add(Stream.of(rowData).map(TCell::new).collect(Collectors.toList()));
-        }
-
-        public void addHeader(String[] headers) {
-            if (headers == null || headers.length != ncols) {
-                log.severe("Ignoring invalid header data in table creation!");
-                return;
-            }
-            this.headers = Stream.of(headers).collect(Collectors.toList());
-        }
-
-        public String getCellText(int r, int c) {
-            return data.get(r).get(c).text;
-        }
-
-        int numrows() {
-            return data.size();
-        }
-
-        int numcols() {
-            return ncols;
-        }
-    }
-
     Table table;
     //E_rc,T_c,B_cc'
     List<List<List<String>>> Erc;
@@ -125,6 +71,9 @@ public class TableSemantifier {
     //list of top ranking candidate relations
     List<List<String>> Bcc;
 
+    //This is cache of property of every id that is queried in KB
+    Map<String,Multimap<String,String>> allProps = new LinkedHashMap<>();
+
     TableSemantifier(Table input) {
         table = input;
         //initialize each of the data elements to the size of the table
@@ -132,16 +81,44 @@ public class TableSemantifier {
         IntStream.range(0,input.numrows()).forEach(r-> {
             Erc.add(new ArrayList<>());
             IntStream.range(0, table.numcols())
-                    .forEach(c -> Erc.get(r).add(new ArrayList<>()));
+                    .forEach(c -> {
+                        List<String> lst = new ArrayList<>();
+                        lst.add("NA");
+                        Erc.get(r).add(lst);
+                    });
         });
         Tc = new ArrayList<>();
         //we consider binary relation of one column with the one next to it
         Bcc = new ArrayList<>();
         IntStream.range(0,input.numcols()).forEach(c-> {
+            List<String> lst1 = new ArrayList<>(), lst2 = new ArrayList<>();
+            lst1.add("NA");lst2.add("NA");
             if(c!=table.numcols()-1)
-                Bcc.add(new ArrayList<>());
-            Tc.add(new ArrayList<>());
+                Bcc.add(lst1);
+            Tc.add(lst2);
         });
+    }
+
+    public void semantify(){
+        fetchCandidateResolutions();
+        //we need random variable for each cell in the table, each column type and numcol-1 binary relations the columns may share
+        Variable[] allVars = new Variable[table.numcols()*table.numrows()+table.numcols()+table.numcols()-1];
+        for(int r=0;r<table.numrows();r++)
+            for(int c=0;c<table.numcols();c++)
+                allVars[r*table.numcols()+c]=new Variable(Erc.get(r).get(c).size());
+        int k=table.numcols()*table.numrows();
+        for(int c=0;c<table.numcols();c++)
+            allVars[k++] = new Variable(Tc.get(c).size());
+        for(int c=0;c<table.numcols()-1;c++)
+            allVars[k++] = new Variable(Tc.get(c).size());
+
+        FactorGraph mdl = new FactorGraph (allVars);
+        //factors over each of the e variable and type variable
+        for(int r=0;r<table.numrows();r++)
+            for(int c=0;c<table.numcols();c++) {
+
+                mdl.addFactor(new TableFactor(allVars[r*table.numcols()+c],new double[0]));
+            }
     }
 
     void fetchCandidateResolutions() {
@@ -173,6 +150,7 @@ public class TableSemantifier {
                 relMap.add(new LinkedHashMap<>());
             typeMap.add(c, new LinkedHashMap<>());
         });
+        //mapping from the KB id to its full properties
         //accumulate type and relation candidates
         IntStream.range(0, table.numrows())
                 .parallel()
@@ -183,6 +161,7 @@ public class TableSemantifier {
                                         .parallel()
                                         .forEach(id -> {
                                             Multimap<String, String> propValues = kb.getAllFacts(id);
+                                            allProps.put(id,propValues);
                                             propValues.entries().stream()
                                                     .map(e -> e.getKey() + ":::" + e.getValue())
                                                     .forEach(type -> typeMap.get(c).put(type, typeMap.get(c).getOrDefault(type, 0) + 1));
