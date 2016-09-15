@@ -43,6 +43,7 @@ public class Wikidata implements KB {
             return "http://www.wikidata.org/entity/"+title;
         }
     }
+
     //limit value more than 500 will be truncated to 500.
     public String[] resolveEntity(String text, int limit) {
         /**Using wbgetentities module to fetch suggestions is straightforward.
@@ -110,8 +111,11 @@ public class Wikidata implements KB {
             }
             return value;
         }
+        String getUnannotatedText(){
+            return value;
+        }
     }
-    static class SPARQLFactsResult {
+    static class SPARQLResult {
         static class Results{
             static class PropValuePair{
                 WikidataItem property, value;
@@ -121,45 +125,40 @@ public class Wikidata implements KB {
         Results results;
     }
 
+    private static SPARQLResult SPARQLQuery(String query) throws URISyntaxException,MalformedURLException,IOException {
+        URL url;
+        URI uri = new URI(
+                "https",
+                "query.wikidata.org",
+                "/bigdata/namespace/wdq/sparql",
+                "query=" + query + "&format=json",
+                null);
+        url = uri.toURL();
+
+        Gson gson = new Gson();
+        //if(log.isLoggable(Level.FINE))
+        log.info("Fetching content from: " + url.toString());
+        return gson.fromJson(new InputStreamReader(url.openStream()), SPARQLResult.class);
+    }
+
     public Multimap<String, String> getAllFacts(String id) {
         //if(log.isLoggable(Level.FINE))
-        log.info("Getting all facts of: "+id);
+        log.info("Getting all facts of: " + id);
 
         String q = "SELECT ?property ?value " +
                 "WHERE" +
                 "{" +
-                "<"+id+"> ?property ?value . " +
+                "<" + id + "> ?property ?value . " +
                 "SERVICE wikibase:label { bd:serviceParam wikibase:language \"en\" }" +
                 "}";
-        URL url = null;
-        //String url = SPARL_ENDPOINT+"?query="+q+"&format=json";
+
+        Multimap<String, String> map = LinkedHashMultimap.create();
         try {
-            URI uri = new URI(
-                    "https",
-                    "query.wikidata.org",
-                    "/bigdata/namespace/wdq/sparql",
-                    "query="+q+"&format=json",
-                    null);
-            url = uri.toURL();
-        }catch(URISyntaxException|MalformedURLException ue){
-            ue.printStackTrace();
-        }
-        Gson gson = new Gson();
-        Multimap<String,String> map = LinkedHashMultimap.create();
-        try {
-            //if(log.isLoggable(Level.FINE))
-                log.info("Fetching content from: "+url.toString());
-//            InputStream is = (InputStream)url.getContent();
-//            BufferedReader br = new BufferedReader(new InputStreamReader(is));
-//            String line;
-//            String str = "";
-//            while((line=br.readLine())!=null)
-//                str += line;
-//            //log.info(str);
-            SPARQLFactsResult results = gson.fromJson(new InputStreamReader(url.openStream()), SPARQLFactsResult.class);
-            results.results.bindings.stream().forEach(p->map.put(p.property.value,p.value.getText()));
+            SPARQLResult results = SPARQLQuery(q);
+            results.results.bindings.stream().forEach(p -> map.put(p.property.value, p.value.getText()));
             return map;
-        } catch (IOException e) {
+        } catch (IOException|URISyntaxException e) {
+            log.warning("Query for properties of id: "+id+" failed either due to an ill-formed query or during parsing.\n Message from exception is: "+e.getMessage());
             e.printStackTrace();
         }
         return map;
@@ -172,44 +171,107 @@ public class Wikidata implements KB {
         String q = "SELECT (COUNT(?p) AS ?value) WHERE { \n" +
                 "  ?p <"+prop+"> <"+value+">. \n" +
                 "}";
-        URL url = null;
         try {
-            URI uri = new URI(
-                    "https",
-                    "query.wikidata.org",
-                    "/bigdata/namespace/wdq/sparql",
-                    "query=" + q + "&format=json",
-                    null);
-            url = uri.toURL();
-        }catch(URISyntaxException|MalformedURLException ue){
-            ue.printStackTrace();
-        }
-        try {
-            Gson gson = new Gson();
-            //if(log.isLoggable(Level.FINE))
-                log.info("Fetching content from: "+url.toString());
-            SPARQLFactsResult results = gson.fromJson(new InputStreamReader(url.openStream()), SPARQLFactsResult.class);
+            SPARQLResult results = SPARQLQuery(q);
             return Integer.parseInt(results.results.bindings.get(0).value.value);
-        }catch(IOException ie){
-            ie.printStackTrace();
+        } catch(IOException|URISyntaxException e) {
+            log.warning("Query on type: "+type+" failed either due to an ill-formed query or during parsing.\n Message from exception is: "+e.getMessage());
+            return 0;
         }
-        return 0;
     }
 
     public String[] getPropertiesOfLabel(){
         return new String[]{"http://www.w3.org/2000/01/rdf-schema#label","http://www.w3.org/2004/02/skos/core#altLabel"};
     }
 
+    /**
+     * Notable work(P800) -> literary works,bibliography,work,works,major works,famous works,significant works,known for
+     * This method can handle both property type ids and resource type
+     * The labels are restricted to english language
+     */
+    public String[] generateLemmaOf(String id) {
+        //if the type supplied is concatenation of two ids such as: http://www.wikidata.org/prop/direct/P31:::http://www.wikidata.org/entity/Q5
+        //that is the type: instance of humans (i.e. all humans), then the second (or last) id is used for retieving properties
+        String[] fs = id.split(":::");
+        id = fs[fs.length - 1];
+        log.fine("Querying lemma for: " + id);
+
+        //it is required to specially handle the case of property as they are not included in the search by default
+        //see: https://www.wikidata.org/wiki/Wikidata:SPARQL_query_service/queries#Working_with_qualifiers
+        boolean propID = id.contains("http://www.wikidata.org/prop/");
+
+        String q;
+        if (!propID)
+            q = "SELECT ?property ?value WHERE {" +
+                    "<" + id + "> rdfs:label ?property." +
+                    "  OPTIONAL {" +
+                    "    <" + id + "> skos:altLabel ?value." +
+                    "    FILTER((LANG(?value)) = \"en\")" +
+                    "  }" +
+                    "  FILTER((LANG(?property)) = \"en\")" +
+                    "}";
+        else
+            q = "SELECT ?property ?value WHERE {" +
+                    "?p wikibase:directClaim <" + id + ">." +
+                    "?p rdfs:label ?property." +
+                    "  OPTIONAL {" +
+                    "    ?p skos:altLabel ?value." +
+                    "    FILTER((LANG(?value)) = \"en\")" +
+                    "  }" +
+                    "  FILTER((LANG(?property)) = \"en\")" +
+                    "}";
+        Set<String> lemmas = new LinkedHashSet<>();
+        try {
+            SPARQLResult result = SPARQLQuery(q);
+            result.results.bindings.stream().forEach(b -> {
+                lemmas.add(b.property.getUnannotatedText());
+                lemmas.add(b.value.getUnannotatedText());
+            });
+        } catch (IOException | URISyntaxException e) {
+            log.warning("Error when fetching lemmas for id: " + id + ", either due to an ill-formed query or during parsing.\n Message from exception is: " + e.getMessage());
+            e.printStackTrace();
+        }
+        return lemmas.toArray(new String[lemmas.size()]);
+    }
+
+    public int getIntersectionOfTypesWithRel(String colType1, String colType2, String br) {
+        String[] fs1 = colType1.split(":::");
+        String[] fs2 = colType2.split(":::");
+        String prop1 = fs1[0], val1 = fs1[1];
+        String prop2 = fs2[0], val2 = fs2[1];
+
+        String q = "SELECT (COUNT(*) AS ?value) WHERE {" +
+                "?x <" + prop1 + "> <" + val1 + "> ." +
+                "?y <" + prop2 + "> <" + val2 + "> ." +
+                "?x <" + br + "> ?y" +
+                "}";
+        try {
+            SPARQLResult result = SPARQLQuery(q);
+            return Integer.parseInt(result.results.bindings.get(0).value.value);
+        } catch (IOException | URISyntaxException | NumberFormatException e) {
+            log.warning("Error when finding intersection between type: " + colType1 + "and col type: " + colType2 + " with binary relation: " + br + "; either due to an ill-formed query or during parsing.\n Message from exception is: " + e.getMessage());
+            e.printStackTrace();
+        }
+        return 0;
+    }
+
     public static void main(String[] args) {
         KB kb = new Wikidata();
-        String[] sgsts = kb.resolveEntity("Harry Potter", 20);
-        Stream.of(sgsts).forEach(System.out::println);
-        kb.getAllFacts("http://www.wikidata.org/entity/Q34660").entries().stream().map(e->e.toString()).forEach(log::info);
-        //number of instances of type human
 
-        //log.info(kb.getNumberOfEntitiesOfType("http://www.wikidata.org/prop/direct/P31:::http://www.wikidata.org/entity/Q5")+"");
-        //number of arjuna award winners
+//        String[] sgsts = kb.resolveEntity("Harry Potter", 20);
+//        Stream.of(sgsts).forEach(System.out::println);
+//
+//        kb.getAllFacts("http://www.wikidata.org/entity/Q34660").entries().stream().map(e->e.toString()).forEach(log::info);
+//
+//        //number of instances of type human
+//        log.info(kb.getNumberOfEntitiesOfType("http://www.wikidata.org/prop/direct/P31:::http://www.wikidata.org/entity/Q5")+"");
+//        //number of arjuna award winners
 //        log.info(kb.getNumberOfEntitiesOfType("P166:::Q671622")+"");
+//
+//        Stream.of(kb.generateLemmaOf("http://www.wikidata.org/prop/direct/P800")).forEach(log::info);
+//        Stream.of(kb.generateLemmaOf("http://www.wikidata.org/entity/Q20")).forEach(log::info);
 
+        //Intersection between entities of type: (occupation-writer) and type: (instance of -- book) that share the relation (notable work)
+        log.info(kb.getIntersectionOfTypesWithRel("http://www.wikidata.org/prop/direct/P106:::http://www.wikidata.org/entity/Q36180","http://www.wikidata.org/prop/direct/P31:::http://www.wikidata.org/entity/Q571","http://www.wikidata.org/prop/direct/P800")+"");
     }
 }

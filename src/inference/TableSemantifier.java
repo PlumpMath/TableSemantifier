@@ -62,6 +62,7 @@ public class TableSemantifier {
     static{
         log.setLevel(Level.FINEST);
     }
+    static String NA = "NA";
 
     Table table;
     //E_rc,T_c,B_cc'
@@ -83,7 +84,7 @@ public class TableSemantifier {
             IntStream.range(0, table.numcols())
                     .forEach(c -> {
                         List<String> lst = new ArrayList<>();
-                        lst.add("NA");
+                        lst.add(NA);
                         Erc.get(r).add(lst);
                     });
         });
@@ -92,7 +93,7 @@ public class TableSemantifier {
         Bcc = new ArrayList<>();
         IntStream.range(0,input.numcols()).forEach(c-> {
             List<String> lst1 = new ArrayList<>(), lst2 = new ArrayList<>();
-            lst1.add("NA");lst2.add("NA");
+            lst1.add(NA);lst2.add(NA);
             if(c!=table.numcols()-1)
                 Bcc.add(lst1);
             Tc.add(lst2);

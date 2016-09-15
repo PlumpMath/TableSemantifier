@@ -39,6 +39,10 @@ public class Table {
         binaryRels = new String[ncols][ncols];
     }
 
+    public List<String> getHeaders(){
+        return headers;
+    }
+
     public void addRow(String[] rowData) {
         if (rowData == null || rowData.length != ncols) {
             log.severe("Ignoring invalid row data in table creation!");

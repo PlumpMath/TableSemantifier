@@ -37,4 +37,17 @@ public interface KB {
      * For example the label value in Wikidata corresponds to: http://www.w3.org/2000/01/rdf-schema#label", "http://www.w3.org/2004/02/skos/core#altLabel"
      * such as in --  http://www.w3.org/2000/01/rdf-schema#label="Joanne K. Rowling"@en*/
     String[] getPropertiesOfLabel();
+
+    /**
+     * Given an id, which can be an instance of property or entity, outputs all the variations or alt. labels along with the label of the supplied id
+     * English-restricted lemma*/
+    String[] generateLemmaOf(String id);
+
+    /**
+     * Number of entities of type1 that share the relation rel with entities of type2
+     * @param colType1  id of the type of column 1;
+     * @param colType2  id of the type of column 2
+     * @param br binary relation between column1 and column2
+     * */
+    int getIntersectionOfTypesWithRel(String colType1, String colType2,String br);
 }
