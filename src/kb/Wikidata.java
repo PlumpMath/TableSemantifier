@@ -19,12 +19,48 @@ import java.util.stream.Stream;
  * TODO: Handle the corner cases and Exception handling
  * TODO: Make a proper use of log levels
  */
-public class Wikidata implements KB {
+public class Wikidata implements KB, Serializable {
     static Logger log = Logger.getLogger(Wikidata.class.getName());
     static{
         log.setLevel(Level.FINEST);
     }
-    static String API_ENDPINT = "https://www.wikidata.org/w/api.php";
+
+    static String serFileName = "Wikidata.ser";
+    public static Wikidata initializeFromCache(){
+        String tmpDir = System.getProperty("java.io.tmpdir");
+        if(new File(tmpDir+File.separator+serFileName).exists()){
+            try {
+                ObjectInputStream ois = new ObjectInputStream(new FileInputStream(tmpDir + File.separator + serFileName));
+                Wikidata obj = (Wikidata)ois.readObject();
+                ois.close();
+                log.info("Successfully read Wikidata object from storage!");
+                return obj;
+            }catch(IOException|ClassNotFoundException e){
+                e.printStackTrace();
+                log.info("Could not read cache from: "+tmpDir+File.separator+serFileName);
+            }
+        }
+        return new Wikidata();
+    }
+
+    public void writeSerialized(){
+        String tmpDir = System.getProperty("java.io.tmpdir");
+        String tmpFile = tmpDir + File.separator + serFileName;
+        try{
+            ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(tmpFile));
+            oos.writeObject(this);
+            oos.close();
+            log.info("An instance of the Wikidata object written to: "+tmpFile);
+        }catch(IOException e){
+            log.severe("Error while writing the KB object to: " + tmpFile);
+            e.printStackTrace();
+        }
+    }
+
+    Map<String,Object> cache;
+    public Wikidata(){
+        cache = new LinkedHashMap<>();
+    }
 
     static class Suggestions{
         Query query;
@@ -58,6 +94,10 @@ public class Wikidata implements KB {
          * Another alternative is a GET over Special:Search
          * https://www.wikidata.org/w/index.php?title=Special:Search&profile=default&fulltext=Search&search=shahrukh+khan;
          */
+        String uid = "re-";
+        String key = uid+text;
+        if(cache.containsKey(key)) return (String[])cache.get(key);
+
         log.info("Resolving text: " + text);
         URL url = null;
         try {
@@ -83,7 +123,9 @@ public class Wikidata implements KB {
         }
         if(sgsts!=null && sgsts.query.search!=null) {
             List<String> ids = sgsts.query.search.stream().map(WikidataId::getId).collect(Collectors.toList());
-            return ids.toArray(new String[ids.size()]);
+            String[] res = ids.toArray(new String[ids.size()]);
+            cache.put(key,res);
+            return res;
         }
         return new String[0];
     }
@@ -142,6 +184,11 @@ public class Wikidata implements KB {
     }
 
     public Multimap<String, String> getAllFacts(String id) {
+        String uid = "gaf-";
+        String key = uid+id;
+        if(cache.containsKey(key))
+            return (Multimap<String,String>)cache.get(key);
+
         //if(log.isLoggable(Level.FINE))
         log.info("Getting all facts of: " + id);
 
@@ -156,6 +203,7 @@ public class Wikidata implements KB {
         try {
             SPARQLResult results = SPARQLQuery(q);
             results.results.bindings.stream().forEach(p -> map.put(p.property.value, p.value.getText()));
+            cache.put(key,map);
             return map;
         } catch (IOException|URISyntaxException e) {
             log.warning("Query for properties of id: "+id+" failed either due to an ill-formed query or during parsing.\n Message from exception is: "+e.getMessage());
@@ -165,6 +213,11 @@ public class Wikidata implements KB {
     }
 
     public int getNumberOfEntitiesOfType(String type) {
+        String uid="gnoeot-";
+        String key = uid + type;
+        if(cache.containsKey(key))
+            return (Integer)cache.get(key);
+
         log.info("Getting number of entities that share the type: " + type);
         String[] fs = type.split(":::");
         String prop = fs[0], value = fs[1];
@@ -173,7 +226,9 @@ public class Wikidata implements KB {
                 "}";
         try {
             SPARQLResult results = SPARQLQuery(q);
-            return Integer.parseInt(results.results.bindings.get(0).value.value);
+            Integer res = Integer.parseInt(results.results.bindings.get(0).value.value);
+            cache.put(key,res);
+            return res;
         } catch(IOException|URISyntaxException e) {
             log.warning("Query on type: "+type+" failed either due to an ill-formed query or during parsing.\n Message from exception is: "+e.getMessage());
             return 0;
@@ -190,6 +245,11 @@ public class Wikidata implements KB {
      * The labels are restricted to english language
      */
     public String[] generateLemmaOf(String id) {
+        String uid = "glo-";
+        String key = uid+id;
+        if(cache.containsKey(key))
+            return (String[])cache.get(key);
+
         //if the type supplied is concatenation of two ids such as: http://www.wikidata.org/prop/direct/P31:::http://www.wikidata.org/entity/Q5
         //that is the type: instance of humans (i.e. all humans), then the second (or last) id is used for retieving properties
         String[] fs = id.split(":::");
@@ -231,10 +291,18 @@ public class Wikidata implements KB {
             log.warning("Error when fetching lemmas for id: " + id + ", either due to an ill-formed query or during parsing.\n Message from exception is: " + e.getMessage());
             e.printStackTrace();
         }
-        return lemmas.toArray(new String[lemmas.size()]);
+        String[] res = lemmas.toArray(new String[lemmas.size()]);
+        cache.put(key,res);
+        return res;
     }
 
     public int getIntersectionOfTypesWithRel(String colType1, String colType2, String br) {
+        String uid = "giotwr-";
+        String key = uid+colType1+colType2+br;
+        if(cache.containsKey(key)){
+            return (Integer)cache.get(key);
+        }
+
         String[] fs1 = colType1.split(":::");
         String[] fs2 = colType2.split(":::");
         String prop1 = fs1[0], val1 = fs1[1];
@@ -247,7 +315,9 @@ public class Wikidata implements KB {
                 "}";
         try {
             SPARQLResult result = SPARQLQuery(q);
-            return Integer.parseInt(result.results.bindings.get(0).value.value);
+            Integer res = Integer.parseInt(result.results.bindings.get(0).value.value);
+            cache.put(key, res);
+            return res;
         } catch (IOException | URISyntaxException | NumberFormatException e) {
             log.warning("Error when finding intersection between type: " + colType1 + "and col type: " + colType2 + " with binary relation: " + br + "; either due to an ill-formed query or during parsing.\n Message from exception is: " + e.getMessage());
             e.printStackTrace();
@@ -256,22 +326,24 @@ public class Wikidata implements KB {
     }
 
     public static void main(String[] args) {
-        KB kb = new Wikidata();
+        KB kb = Wikidata.initializeFromCache();
 
-//        String[] sgsts = kb.resolveEntity("Harry Potter", 20);
-//        Stream.of(sgsts).forEach(System.out::println);
-//
-//        kb.getAllFacts("http://www.wikidata.org/entity/Q34660").entries().stream().map(e->e.toString()).forEach(log::info);
-//
-//        //number of instances of type human
-//        log.info(kb.getNumberOfEntitiesOfType("http://www.wikidata.org/prop/direct/P31:::http://www.wikidata.org/entity/Q5")+"");
-//        //number of arjuna award winners
-//        log.info(kb.getNumberOfEntitiesOfType("P166:::Q671622")+"");
-//
-//        Stream.of(kb.generateLemmaOf("http://www.wikidata.org/prop/direct/P800")).forEach(log::info);
-//        Stream.of(kb.generateLemmaOf("http://www.wikidata.org/entity/Q20")).forEach(log::info);
+        String[] sgsts = kb.resolveEntity("Harry Potter", 20);
+        Stream.of(sgsts).forEach(System.out::println);
+
+        kb.getAllFacts("http://www.wikidata.org/entity/Q34660").entries().stream().map(e->e.toString()).forEach(log::info);
+
+        //number of instances of type human
+        log.info(kb.getNumberOfEntitiesOfType("http://www.wikidata.org/prop/direct/P31:::http://www.wikidata.org/entity/Q5")+"");
+        //number of arjuna award winners
+        log.info(kb.getNumberOfEntitiesOfType("P166:::Q671622")+"");
+
+        Stream.of(kb.generateLemmaOf("http://www.wikidata.org/prop/direct/P800")).forEach(log::info);
+        Stream.of(kb.generateLemmaOf("http://www.wikidata.org/entity/Q20")).forEach(log::info);
 
         //Intersection between entities of type: (occupation-writer) and type: (instance of -- book) that share the relation (notable work)
         log.info(kb.getIntersectionOfTypesWithRel("http://www.wikidata.org/prop/direct/P106:::http://www.wikidata.org/entity/Q36180","http://www.wikidata.org/prop/direct/P31:::http://www.wikidata.org/entity/Q571","http://www.wikidata.org/prop/direct/P800")+"");
+
+        ((Wikidata)kb).writeSerialized();
     }
 }
