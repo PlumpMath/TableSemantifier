@@ -21,40 +21,43 @@ import java.util.stream.Stream;
  */
 public class Wikidata implements KB, Serializable {
     static Logger log = Logger.getLogger(Wikidata.class.getName());
+    static String tmpDir = System.getProperty("user.home")+File.separator+"cache";
     static{
         log.setLevel(Level.FINEST);
+        if(!new File(tmpDir).exists())
+            new File(tmpDir).mkdir();
     }
 
     static String serFileName = "Wikidata.ser";
     public static Wikidata initializeFromCache(){
-        String tmpDir = System.getProperty("java.io.tmpdir");
-        if(new File(tmpDir+File.separator+serFileName).exists()){
+        String tmpFile = tmpDir + File.separator + serFileName;
+        if(new File(tmpFile).exists()){
             try {
-                ObjectInputStream ois = new ObjectInputStream(new FileInputStream(tmpDir + File.separator + serFileName));
+                ObjectInputStream ois = new ObjectInputStream(new FileInputStream(tmpFile));
                 Wikidata obj = (Wikidata)ois.readObject();
                 ois.close();
-                log.info("Successfully read Wikidata object from storage!");
+                log.info("Successfully read Wikidata object from: "+tmpFile);
                 return obj;
             }catch(IOException|ClassNotFoundException e){
                 e.printStackTrace();
-                log.info("Could not read cache from: "+tmpDir+File.separator+serFileName);
+                log.info("Could not read cache from: "+tmpFile);
             }
         }
         return new Wikidata();
     }
 
-    public void writeSerialized(){
-        String tmpDir = System.getProperty("java.io.tmpdir");
+    public void writeSerialized() {
         String tmpFile = tmpDir + File.separator + serFileName;
-        try{
-            ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(tmpFile));
-            oos.writeObject(this);
-            oos.close();
-            log.info("An instance of the Wikidata object written to: "+tmpFile);
-        }catch(IOException e){
-            log.severe("Error while writing the KB object to: " + tmpFile);
-            e.printStackTrace();
-        }
+        if (!new File(tmpFile).exists())
+            try {
+                ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(tmpFile));
+                oos.writeObject(this);
+                oos.close();
+                log.info("An instance of the Wikidata object written to: " + tmpFile);
+            } catch (IOException e) {
+                log.severe("Error while writing the KB object to: " + tmpFile);
+                e.printStackTrace();
+            }
     }
 
     Map<String,Object> cache;
@@ -222,7 +225,7 @@ public class Wikidata implements KB, Serializable {
         String[] fs = type.split(":::");
         String prop = fs[0], value = fs[1];
         String q = "SELECT (COUNT(?p) AS ?value) WHERE { \n" +
-                "  ?p <"+prop+"> <"+value+">. \n" +
+                "  ?p <"+prop+"> "+(value.startsWith("http://")?("<"+value+">"):(value))+". \n" +
                 "}";
         try {
             SPARQLResult results = SPARQLQuery(q);
@@ -230,7 +233,7 @@ public class Wikidata implements KB, Serializable {
             cache.put(key,res);
             return res;
         } catch(IOException|URISyntaxException e) {
-            log.warning("Query on type: "+type+" failed either due to an ill-formed query or during parsing.\n Message from exception is: "+e.getMessage());
+            log.warning("fetching number of entities of type: "+type+" failed either due to an ill-formed query or during parsing.\n Message from exception is: "+e.getMessage());
             return 0;
         }
     }
@@ -308,15 +311,17 @@ public class Wikidata implements KB, Serializable {
         String prop1 = fs1[0], val1 = fs1[1];
         String prop2 = fs2[0], val2 = fs2[1];
 
+        if(val1.startsWith("http://")) val1 = "<"+val1+">";
+        if(val2.startsWith("http://")) val2 = "<"+val2+">";
         String q = "SELECT (COUNT(*) AS ?value) WHERE {" +
-                "?x <" + prop1 + "> <" + val1 + "> ." +
-                "?y <" + prop2 + "> <" + val2 + "> ." +
+                "?x <" + prop1 + "> " + val1 + " ." +
+                "?y <" + prop2 + "> " + val2 + " ." +
                 "?x <" + br + "> ?y" +
                 "}";
         try {
             SPARQLResult result = SPARQLQuery(q);
             Integer res = Integer.parseInt(result.results.bindings.get(0).value.value);
-            cache.put(key, res);
+            cache.put(key, new Integer(res));
             return res;
         } catch (IOException | URISyntaxException | NumberFormatException e) {
             log.warning("Error when finding intersection between type: " + colType1 + "and col type: " + colType2 + " with binary relation: " + br + "; either due to an ill-formed query or during parsing.\n Message from exception is: " + e.getMessage());
@@ -327,6 +332,8 @@ public class Wikidata implements KB, Serializable {
 
     public static void main(String[] args) {
         KB kb = Wikidata.initializeFromCache();
+        Wikidata test = (Wikidata)kb;
+        test.cache.entrySet().stream().filter(e->e.getKey().startsWith("giotwr-")).forEach(System.out::println);
 
         String[] sgsts = kb.resolveEntity("Harry Potter", 20);
         Stream.of(sgsts).forEach(System.out::println);
@@ -336,14 +343,15 @@ public class Wikidata implements KB, Serializable {
         //number of instances of type human
         log.info(kb.getNumberOfEntitiesOfType("http://www.wikidata.org/prop/direct/P31:::http://www.wikidata.org/entity/Q5")+"");
         //number of arjuna award winners
-        log.info(kb.getNumberOfEntitiesOfType("P166:::Q671622")+"");
+        log.info(kb.getNumberOfEntitiesOfType("http://www.wikidata.org/prop/direct/P166:::http://www.wikidata.org/entity/Q671622")+"");
+        log.info("#Inferno type: "+kb.getNumberOfEntitiesOfType("http://www.w3.org/2000/01/rdf-schema#label:::\"Inferno\"@ja"));
 
         Stream.of(kb.generateLemmaOf("http://www.wikidata.org/prop/direct/P800")).forEach(log::info);
         Stream.of(kb.generateLemmaOf("http://www.wikidata.org/entity/Q20")).forEach(log::info);
 
         //Intersection between entities of type: (occupation-writer) and type: (instance of -- book) that share the relation (notable work)
         log.info(kb.getIntersectionOfTypesWithRel("http://www.wikidata.org/prop/direct/P106:::http://www.wikidata.org/entity/Q36180","http://www.wikidata.org/prop/direct/P31:::http://www.wikidata.org/entity/Q571","http://www.wikidata.org/prop/direct/P800")+"");
-
+        log.info(kb.getIntersectionOfTypesWithRel("http://www.wikidata.org/prop/direct/P106:::http://www.wikidata.org/entity/Q36180","http://www.w3.org/2000/01/rdf-schema#label:::\"Inferno\"@cs","http://www.wikidata.org/prop/direct/P800")+"");
         ((Wikidata)kb).writeSerialized();
     }
 }

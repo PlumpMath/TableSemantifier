@@ -34,9 +34,9 @@ public class FactorFeatures {
         this.cache = cache;
     }
 
-    Multimap<String,String> requestDataWithCache(String kbId){
+    private Multimap<String,String> requestDataWithCache(String kbId){
         Multimap<String,String> props = cache.get(kbId);
-        if(props!=null) {
+        if(props==null) {
             //severe because this is not expected to happen
             log.severe("KB Id: "+kbId+" not found in cache, making a request");
             props = kb.getAllFacts(kbId);
@@ -50,7 +50,7 @@ public class FactorFeatures {
     }
 
 
-    final static int DEF_VALUE = 1;
+    final static double DEF_VALUE = 1;
 
     static boolean isNA(String str){
         return TableSemantifier.NA.equals(str);
@@ -100,7 +100,7 @@ public class FactorFeatures {
 
         String hc;
         //return 0 if no header
-        if (headers == null || headers.size() < c || (hc = headers.get(c)) == null || hc.length() == 0)
+        if (headers == null || headers.size() <= c || (hc = headers.get(c)) == null || hc.length() == 0)
             return DEF_VALUE;
 
         String[] typeLemmas = kb.generateLemmaOf(type);
@@ -133,7 +133,7 @@ public class FactorFeatures {
         if(!props.containsEntry(prop,value))
             return DEF_VALUE;
 
-        f[0] = 1/Math.sqrt(kb.getNumberOfEntitiesOfType(type));
+        f[0] = 1.0;///(1+kb.getNumberOfEntitiesOfType(type));
 
         return computePotential(f,w);
     }
@@ -153,7 +153,7 @@ public class FactorFeatures {
 
         //number of entities of type1 that share the relation rel with entities of type2
         double inter = kb.getIntersectionOfTypesWithRel(type1,type2,rel);
-        f[0] = inter/(kb.getNumberOfEntitiesOfType(type1)*kb.getNumberOfEntitiesOfType(type2));
+        f[0] = inter/((kb.getNumberOfEntitiesOfType(type1)+1)*(kb.getNumberOfEntitiesOfType(type2)+1));
         return computePotential(f,w);
     }
 
@@ -172,5 +172,9 @@ public class FactorFeatures {
         else f[0] = 0;
 
         return computePotential(f,w);
+    }
+
+    public static void main(String[] args){
+        System.out.println(computePotential(new double[]{1},new double[]{1})==Math.exp(1));
     }
 }

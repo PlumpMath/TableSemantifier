@@ -1,7 +1,7 @@
 package inference;
-import cc.mallet.grmm.types.FactorGraph;
-import cc.mallet.grmm.types.TableFactor;
-import cc.mallet.grmm.types.Variable;
+import cc.mallet.grmm.inference.Inferencer;
+import cc.mallet.grmm.inference.LoopyBP;
+import cc.mallet.grmm.types.*;
 import com.google.common.collect.Multimap;
 import kb.KB;
 import kb.Wikidata;
@@ -13,6 +13,7 @@ import java.util.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
+import java.util.stream.DoubleStream;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
@@ -74,7 +75,9 @@ public class TableSemantifier {
 
     //This is cache of property of every id that is queried in KB
     Map<String,Multimap<String,String>> allProps = new LinkedHashMap<>();
+    KB kb;
 
+    static boolean DEBUG_MODE = true;
     TableSemantifier(Table input) {
         table = input;
         //initialize each of the data elements to the size of the table
@@ -98,32 +101,160 @@ public class TableSemantifier {
                 Bcc.add(lst1);
             Tc.add(lst2);
         });
+
+        if(DEBUG_MODE)
+            kb = Wikidata.initializeFromCache();
+        else kb = new Wikidata();
     }
 
-    public void semantify(){
+    //copied from TestInference.java in GRMM
+    private Factor[] collectAllMarginals (FactorGraph mdl, Inferencer alg)
+    {
+        int vrt = 0;
+        int numVertices = mdl.numVariables ();
+        Factor[] collector = new Factor[numVertices];
+        for (Iterator it = mdl.variablesSet ().iterator();
+             it.hasNext();
+             vrt++) {
+            Variable var = (Variable) it.next();
+            try {
+                collector[vrt] = alg.lookupMarginal(var);
+                assert collector [vrt] != null
+                        : "Query returned null for model " + mdl + " vertex " + var + " alg " + alg;
+            } catch (UnsupportedOperationException e) {
+                // Allow unsupported inference to slide with warning
+                log.warning("Warning: Skipping model " + mdl + " for alg " + alg
+                        + "\n  Inference unsupported.");
+            }
+        }
+        return collector;
+    }
+
+    public void semantify() {
         fetchCandidateResolutions();
         //we need random variable for each cell in the table, each column type and numcol-1 binary relations the columns may share
-        Variable[] allVars = new Variable[table.numcols()*table.numrows()+table.numcols()+table.numcols()-1];
-        for(int r=0;r<table.numrows();r++)
-            for(int c=0;c<table.numcols();c++)
-                allVars[r*table.numcols()+c]=new Variable(Erc.get(r).get(c).size());
-        int k=table.numcols()*table.numrows();
-        for(int c=0;c<table.numcols();c++)
+        Variable[] allVars = new Variable[table.numcols() * table.numrows() + table.numcols() + table.numcols() - 1];
+        for (int r = 0; r < table.numrows(); r++)
+            for (int c = 0; c < table.numcols(); c++)
+                allVars[r * table.numcols() + c] = new Variable(Erc.get(r).get(c).size());
+        int k = table.numcols() * table.numrows();
+        for (int c = 0; c < table.numcols(); c++)
             allVars[k++] = new Variable(Tc.get(c).size());
-        for(int c=0;c<table.numcols()-1;c++)
-            allVars[k++] = new Variable(Tc.get(c).size());
+        for (int c = 0; c < table.numcols() - 1; c++)
+            allVars[k++] = new Variable(Bcc.get(c).size());
 
-        FactorGraph mdl = new FactorGraph (allVars);
-        //factors over each of the e variable and type variable
-        for(int r=0;r<table.numrows();r++)
-            for(int c=0;c<table.numcols();c++) {
+        int tableSize = table.numrows() * table.numcols();
 
-                mdl.addFactor(new TableFactor(allVars[r*table.numcols()+c],new double[0]));
-            }
+        FactorGraph fg = new FactorGraph(allVars);
+
+        FactorFeatures fgen = new FactorFeatures(table, kb);
+        fgen.setCache(allProps);
+
+        //potential over e rvs
+        //factors over each of the e variable and type variable - phi1
+        IntStream.range(0, table.numrows())
+                .forEach(r -> IntStream.range(0, table.numcols())
+                        .forEach(c -> {
+                            double[] vals = Erc.get(r).get(c).stream().mapToDouble(kbId -> fgen.linkPotential(r, c, kbId)).toArray();
+                            fg.addFactor(new TableFactor(allVars[r * table.numcols() + c], vals));
+                        }));
+
+        //factors over each of column types - phi2
+        IntStream.range(0, table.numcols())
+                .forEach(c -> {
+                    double[] vals = Tc.get(c).stream().mapToDouble(tc -> fgen.colTypePotential(c, tc)).toArray();
+                    fg.addFactor(new TableFactor(allVars[tableSize + c], vals));
+                });
+
+        //joint factors over link variable and column type variable - phi3
+        IntStream.range(0, table.numrows())
+                .forEach(r -> IntStream.range(0, table.numcols())
+                        .forEach(c -> {
+                            Variable tvar = allVars[tableSize + c];
+                            Variable evar = allVars[r * table.numcols() + c];
+                            double[] vals = new double[Tc.get(c).size() * Erc.get(r).get(c).size()];
+                            IntStream.range(0, Tc.get(c).size())
+                                    .forEach(ti -> IntStream.range(0, Erc.get(r).get(c).size())
+                                            .forEach(ei ->
+                                                            vals[ti * Erc.get(r).get(c).size() + ei] = fgen.colTypeLinkPotential(Tc.get(c).get(ti), Erc.get(r).get(c).get(ei))
+                                            ));
+                            fg.addFactor(tvar, evar, vals);
+                        }));
+
+        //joint factor over column types and their binary relations - phi4
+        //relTypeColsPotential accesses network to compute features, hence parallelized
+        IntStream.range(0, table.numcols() - 1)
+                .forEach(c -> {
+                    Variable tvar1 = allVars[tableSize + c];
+                    Variable tvar2 = allVars[tableSize + c + 1];
+                    Variable brvar = allVars[tableSize + table.numcols() + c];
+                    double[] vals = new double[Tc.get(c).size() * Tc.get(c + 1).size() * Bcc.get(c).size()];
+                    IntStream.range(0, Tc.get(c).size())
+                            .parallel()
+                            .forEach(ti -> IntStream.range(0, Tc.get(c + 1).size())
+                                    .parallel()
+                                    .forEach(ti2 -> IntStream.range(0, Bcc.get(c).size())
+                                            .parallel()
+                                            .forEach(bi ->
+                                                    vals[ti * Tc.get(c + 1).size() * Bcc.get(c).size() + ti2 * Bcc.get(c).size() + bi]
+                                                            = fgen.relTypeColsPotential(Tc.get(c).get(ti), Tc.get(c + 1).get(ti2), Bcc.get(c).get(bi)))));
+                    fg.addFactor(new TableFactor(new Variable[]{tvar1, tvar2, brvar}, vals));
+                });
+
+        //joint factor over link vars and binary relation - phi5
+        IntStream.range(0, table.numcols() - 1)
+                .forEach(c -> {
+                    Variable brvar = allVars[tableSize + table.numcols() + c];
+                    IntStream.range(0, table.numrows())
+                            .forEach(r -> {
+                                Variable er1 = allVars[r * table.numcols() + c];
+                                Variable er2 = allVars[r * table.numcols() + c + 1];
+                                double[] vals = new double[Erc.get(r).get(c).size() * Erc.get(r).get(c + 1).size() * Bcc.get(c).size()];
+                                IntStream.range(0, Erc.get(r).get(c).size())
+                                        .forEach(e1 -> IntStream.range(0, Erc.get(r).get(c + 1).size())
+                                                .forEach(e2 -> IntStream.range(0, Bcc.get(c).size())
+                                                        .forEach(bi ->
+                                                                vals[e1 * Erc.get(r).get(c + 1).size() * Bcc.get(c).size() + e2 * Bcc.get(c).size() + bi]
+                                                                        = fgen.relLinkPotential(Erc.get(r).get(c).get(e1), Erc.get(r).get(c + 1).get(e2), Bcc.get(c).get(bi)
+                                                                ))
+                                                ));
+                                fg.addFactor(new TableFactor(new Variable[]{er1, er2, brvar}, vals));
+                            });
+                });
+
+        //cache the results
+        if(DEBUG_MODE)
+            ((Wikidata)kb).writeSerialized();
+
+        Inferencer inf = LoopyBP.createForMaxProduct();
+        inf.computeMarginals(fg);
+        Factor[] facts = collectAllMarginals(fg,inf);
+        Stream.of(facts).forEach(f->log.info(f.prettyOutputString()+"-"+f.dumpToString()));
+        IntStream.range(0,facts.length)
+                .forEach(fi->{
+                    Factor f = facts[fi];
+                    double[] dvs = ((AbstractTableFactor) f).getValues();
+                    Double[] vals = new Double[dvs.length];
+                    IntStream.range(0,dvs.length).forEach(di->vals[di]=dvs[di]);
+                    int[] idxs = Util.getIndicesInSortedArray(vals);
+                    if(fi<tableSize) {
+                        int r = fi/table.numcols();
+                        int c = fi%table.numcols();
+                        table.setLinksOf(r, c, IntStream.of(idxs).boxed().limit(5).map(Erc.get(r).get(c)::get).collect(Collectors.toList()));
+                    }
+                    else if(fi<tableSize+table.numcols()) {
+                        int c = fi-tableSize;
+                        table.setTypesOf(c, IntStream.of(idxs).boxed().limit(5).map(Tc.get(c)::get).collect(Collectors.toList()));
+                    }
+                    else{
+                        int c = fi-(tableSize+table.numcols());
+                        table.setRelsOf(c, IntStream.of(idxs).boxed().limit(5).map(Bcc.get(c)::get).collect(Collectors.toList()));
+                    }
+                });
+        log.info(table.prettyPrint());
     }
 
     void fetchCandidateResolutions() {
-        KB kb = new Wikidata();
         int LIMIT = 5;
         IntStream.range(0, table.numcols())
                 .parallel()
@@ -167,8 +298,6 @@ public class TableSemantifier {
                                                     .map(e -> e.getKey() + ":::" + e.getValue())
                                                     .forEach(type -> typeMap.get(c).put(type, typeMap.get(c).getOrDefault(type, 0) + 1));
                                             if (c != table.numcols() - 1) {
-                                                log.info("Prop values for: " + id + " -- " + propValues.values());
-                                                log.info("Next col. candidates: " + Erc.get(r).get(c + 1));
                                                 propValues.entries().stream()
                                                         .filter(e -> Erc.get(r).get(c + 1).contains(e.getValue()))
                                                         .forEach(e -> relMap.get(c).put(e.getKey(), relMap.get(c).getOrDefault(e.getKey(), 0) + 1)
@@ -210,7 +339,8 @@ public class TableSemantifier {
         books.addRow(new String[]{"Dante", "Inferno"});
         long st = System.currentTimeMillis();
         TableSemantifier semantifier = new TableSemantifier(books);
-        semantifier.fetchCandidateResolutions();
+        semantifier.semantify();
+        //semantifier.fetchCandidateResolutions();
         log.info("Time elapsed: " + (System.currentTimeMillis() - st) + "ms");
     }
 }
