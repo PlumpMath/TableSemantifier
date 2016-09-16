@@ -19,6 +19,8 @@ Start with `TableSemantifier.main` for some test examples. In the meanwhile, I w
 ##Examples
 Some example tables and their semantified versions are shown below.
 A table is added with five most likely annotations for each of: cell text, headers and binary relations.
+
+###Authors and their notable work.
 <table>
 <tr>
 <td>
@@ -55,6 +57,7 @@ A table is added with five most likely annotations for each of: cell text, heade
 </tr>
 Possible relations between column 0 and 1 shown in the books table is <a href='[http://www.wikidata.org/prop/direct/P800, http://www.wikidata.org/prop/direct/P1445, http://www.wikidata.org/prop/direct/P31, http://www.wikidata.org/prop/direct/P1080, http://www.wikidata.org/prop/direct/P1441]'>["notable work"@en, "fictional universe described in"@en, "instance of"@en, "from fictional universe"@en, "present in work"@en]</a>
 
+###Indian Cricketers
 <table>
 <tr>
 <td>
@@ -86,6 +89,7 @@ Possible relations between column 0 and 1 shown in the books table is <a href='[
 </tr>
 </table>
 
+###PadmaVibhushan winners in 2016 (except Krishnamurthy)
 <table>
 <tr>
 <td>
@@ -117,6 +121,7 @@ Possible relations between column 0 and 1 shown in the books table is <a href='[
 </tr>
 </table>
 
+###Nobel prize winning physicists 
 <table>
 <tr>
 <td>
@@ -157,3 +162,4 @@ On my (10Mbps) network and on my 2.5Ghz Intelx64 Core i5 machine, the books tabl
 2. The suggestions retrieved in the initial stage of pipeline based on a cell text are crucial. Suggestions for entities work fine but fails for nouns such as *red*, *alpha*(greek alphabet) etc. One possible fix is to leverage the column text if available to direct the search query.  
 3. Several corner cases are not handled such as when processing requests to knowledge base or when printing a table etc.
 4. Needs a lot more documentation and proper interface for easier access.
+5. The system fetches suggestions for text spanning the entire cell, it is straight forward to extend it to select the right chunk in cell text. For example, cell text *Stacy loves red color* should be treated as two cells since there are two possible chunks, *Stacy* and *red*.
