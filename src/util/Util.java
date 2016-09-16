@@ -24,11 +24,20 @@ public class Util {
         return a.split("\\s+").length;
     }
 
+    static List<String> stopWords = Arrays.asList("but", "be", "with", "such", "then", "for", "no", "will", "not", "are", "and", "their", "if", "this", "on", "into", "a", "there", "in", "that", "they", "was", "it", "an", "the", "as", "at", "these", "to", "of","is" );
+    /**
+     * Weeds out stop words in the supplied text*/
+    public static String[] filterSWs(String[] words){
+        List<String> arr = Stream.of(words).filter(w -> !stopWords.contains(w)).collect(Collectors.toList());
+        return arr.toArray(new String[arr.size()]);
+    }
+
     //returns the number of exact word matches between a and b
     public static int numWordMatch(String a, String b){
         if(a==null||b==null||a.length()==0||b.length()==0)
             return 0;
-        String[] aWords = a.split("\\s+"), bWords = b.split("\\s+");
+        a = a.toLowerCase();b=b.toLowerCase();
+        String[] aWords = filterSWs(a.split("\\W+")), bWords = filterSWs(b.split("\\W+"));
         return Stream.of(aWords).filter(Arrays.asList(bWords)::contains).collect(Collectors.toList()).size();
     }
 
@@ -46,5 +55,9 @@ public class Util {
         for(int i=0;i<idx.length;i++)
             System.out.print(idx[i]+",");
         System.out.println();
+
+        System.out.println(numWordMatch("hello is the some", "is the mac") == 0);
+
+        System.out.println(numWordMatch("\"Indian cricketer\"@en=2","cricketer india"));
     }
 }

@@ -4,6 +4,7 @@ import com.google.common.collect.LinkedHashMultimap;
 import com.google.common.collect.Multimap;
 import com.google.gson.Gson;
 import com.google.gson.annotations.SerializedName;
+import util.Util;
 
 import java.io.*;
 import java.net.*;
@@ -16,6 +17,7 @@ import java.util.stream.Stream;
 /**
  * Created by vihari on 12/09/16.
  *
+ * Limitation: It is unfortunate search for http://schema.org/description:::"Indian cricketer" is case sensitive and limits the labels to exclude such
  * TODO: Handle the corner cases and Exception handling
  * TODO: Make a proper use of log levels
  */
@@ -199,7 +201,7 @@ public class Wikidata implements KB, Serializable {
                 "WHERE" +
                 "{" +
                 "<" + id + "> ?property ?value ." +
-                //"FILTER (regex(str(?value), '^http://') || (LANG(?value)='en')) ."+
+                "FILTER (regex(str(?value), '^http://') || (LANG(?value)='en')) ."+
                 "SERVICE wikibase:label { bd:serviceParam wikibase:language \"en\" }" +
                 "}";
 
@@ -257,7 +259,11 @@ public class Wikidata implements KB, Serializable {
         //if the type supplied is concatenation of two ids such as: http://www.wikidata.org/prop/direct/P31:::http://www.wikidata.org/entity/Q5
         //that is the type: instance of humans (i.e. all humans), then the second (or last) id is used for retieving properties
         String[] fs = id.split(":::");
-        id = fs[fs.length - 1];
+        if(fs.length>1){
+            List<String> all = new ArrayList<>();
+            Stream.of(fs).forEach(f->Stream.of(generateLemmaOf(f)).forEach(all::add));
+            return all.toArray(new String[all.size()]);
+        }
         log.fine("Querying lemma for: " + id);
 
         //it is required to specially handle the case of property as they are not included in the search by default
@@ -289,7 +295,8 @@ public class Wikidata implements KB, Serializable {
             SPARQLResult result = SPARQLQuery(q);
             result.results.bindings.stream().forEach(b -> {
                 lemmas.add(b.property.getUnannotatedText());
-                lemmas.add(b.value.getUnannotatedText());
+                //since value is optional
+                if(b.value!=null) lemmas.add(b.value.getUnannotatedText());
             });
         } catch (IOException | URISyntaxException e) {
             log.warning("Error when fetching lemmas for id: " + id + ", either due to an ill-formed query or during parsing.\n Message from exception is: " + e.getMessage());
@@ -368,14 +375,23 @@ public class Wikidata implements KB, Serializable {
     }
 
     public static void main(String[] args) {
-        KB kb = Wikidata.initializeFromCache();
+        KB kb = new Wikidata();//Wikidata.initializeFromCache();
         Wikidata test = (Wikidata)kb;
         test.cache.entrySet().stream().filter(e->e.getKey().startsWith("giotwr-")).forEach(System.out::println);
 
         String[] sgsts = kb.resolveEntity("Harry Potter", 20);
         Stream.of(sgsts).forEach(System.out::println);
 
-        kb.getAllFacts("http://www.wikidata.org/entity/Q34660").entries().stream().map(e->e.toString()).forEach(log::info);
+        kb.getAllFacts("http://www.wikidata.org/entity/Q9488").entries().stream().map(e->e.toString()).forEach(log::info);
+
+        String id = "http://www.wikidata.org/entity/Q9488", type = "http://www.wikidata.org/prop/direct/P106:::http://www.wikidata.org/entity/Q12299841";
+        String[] lemmas = kb.generateLemmaOf(type);
+        Collection<String> descText = kb.getAllFacts(id).get("http://schema.org/description");
+        StringBuffer sb = new StringBuffer();
+        Stream.of(lemmas).forEach(s->sb.append(s+", "));
+        System.out.println(sb.toString()+" -- "+descText);
+        System.out.println("overlap in words? "+Stream.of(lemmas).filter(l->descText.stream().filter(d-> Util.numWordMatch(d, l)>0).findAny().isPresent()).findAny().isPresent());
+
 
 //        //number of instances of type human
 //        log.info(kb.getNumberOfEntitiesOfType("http://www.wikidata.org/prop/direct/P31:::http://www.wikidata.org/entity/Q5")+"");

@@ -77,8 +77,10 @@ public class FactorFeatures {
         //No labels => return 0
         if(labels.size()==0) return DEF_VALUE;
 
-        boolean isUserOrTalkPage = labels.stream().filter(s->s.startsWith("User:")|s.startsWith("Talk:")).findAny().isPresent();
-        if(isUserOrTalkPage) return 0;
+        //Can the list be expanded to match any phrase starting with a word followed by colon, ':'?
+        //IN other words, is every page that has colon is special page?
+        boolean SPECIAL_PAGE = labels.stream().filter(s->s.startsWith("User:")|s.startsWith("Talk:")|s.startsWith("Cricket:")|s.startsWith("List:")).findAny().isPresent();
+        if(SPECIAL_PAGE) return DEF_VALUE;
 
         Collection<String> enLabels = labels.stream().filter(s->s.endsWith("@en")).map(s->s.substring(1,s.length()-3)).collect(Collectors.toList());
         //the score of the label that best matches the cell text
@@ -139,6 +141,16 @@ public class FactorFeatures {
         if(ne>=100)
             f[0] = 1.0/Math.log(kb.getNumberOfEntitiesOfType(type));
         else f[0] = 0;
+
+        int BOOST_SCORE = 2;
+        //if the type share any keyword present in dictionary, then it is rewarding to classify the column to such type
+        String[] lemmas = kb.generateLemmaOf(type);
+        Collection<String> descText = kb.getAllFacts(id).get("http://schema.org/description");
+        boolean overlapsWithDescription = Stream.of(lemmas).filter(l->descText.stream().filter(d->Util.numWordMatch(d,l)>0).findAny().isPresent()).findAny().isPresent();
+        if(overlapsWithDescription) {
+            f[0] *= BOOST_SCORE;
+            log.info("Boosting: id:" + id + " matching type: " + type + " because they share some words in their descriptions");
+        }
 
         return computePotential(f,w);
     }

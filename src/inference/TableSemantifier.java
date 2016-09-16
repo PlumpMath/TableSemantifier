@@ -239,26 +239,31 @@ public class TableSemantifier {
                     if(fi<tableSize) {
                         int r = fi/table.numcols();
                         int c = fi%table.numcols();
-                        table.setLinksOf(r, c, IntStream.of(idxs).boxed().limit(5).map(Erc.get(r).get(c)::get).map(s->kb.getLabelOf(s)+"("+s+")").collect(Collectors.toList()));
+                        table.setLinks(r, c,
+                                IntStream.of(idxs).boxed().limit(5).map(Erc.get(r).get(c)::get).collect(Collectors.toList()),
+                                IntStream.of(idxs).boxed().limit(5).map(Erc.get(r).get(c)::get).map(s -> kb.getLabelOf(s)).collect(Collectors.toList()));
                     }
                     else if(fi<tableSize+table.numcols()) {
-                        int c = fi-tableSize;
-                        table.setTypesOf(c, IntStream.of(idxs).boxed().limit(5).map(Tc.get(c)::get).map(t->{
-                            String fs[] = t.split(":::");
-                            String lprop = "", lval = "";
-                            if(fs[0].startsWith("http://"))
-                                lprop = kb.getLabelOf(fs[0]);
-                            if(fs[1].startsWith("http://"))
-                                lval = kb.getLabelOf(fs[1]);
-                            return lprop+"("+fs[0]+"):::"+lval+"("+fs[1]+")";
-                        }).collect(Collectors.toList()));
+                        int c = fi - tableSize;
+                        table.setColTypes(c,
+                                IntStream.of(idxs).boxed().limit(5).map(Tc.get(c)::get).collect(Collectors.toList()),
+                                IntStream.of(idxs).boxed().limit(5).map(Tc.get(c)::get).map(t -> {
+                                    String fs[] = t.split(":::");
+                                    String lprop = "", lval = "";
+                                    if (fs[0].startsWith("http://"))
+                                        lprop = kb.getLabelOf(fs[0]);
+                                    if (fs[1].startsWith("http://"))
+                                        lval = kb.getLabelOf(fs[1]);
+                                    return lprop + ":::" + lval;
+                                }).collect(Collectors.toList()));
                     }
                     else{
                         int c = fi-(tableSize+table.numcols());
-                        table.setRelsOf(c, IntStream.of(idxs).boxed().limit(5).map(Bcc.get(c)::get).map(s->kb.getLabelOf(s)+"("+s+")").collect(Collectors.toList()));
+                        table.setColumnRels(c,
+                                IntStream.of(idxs).boxed().limit(5).map(Bcc.get(c)::get).collect(Collectors.toList()),
+                                IntStream.of(idxs).boxed().limit(5).map(Bcc.get(c)::get).map(s -> kb.getLabelOf(s)).collect(Collectors.toList()));
                     }
                 });
-        log.info(table.prettyPrint());
     }
 
     void fetchCandidateResolutions() {
@@ -356,10 +361,30 @@ public class TableSemantifier {
         cricket.addRow(new String[]{"Mr. Dependable"});
         cricket.addRow(new String[]{"Yuvi"});
         cricket.addRow(new String[]{"Dhoni"});
+        cricket.addRow(new String[]{"lakshmipathi"});
+
+        Table nobel_physics = new Table(1);
+        nobel_physics.addRow(new String[]{"Feynman"});
+        nobel_physics.addRow(new String[]{"Einstein"});
+        nobel_physics.addRow(new String[]{"Peter"});
+        nobel_physics.addRow(new String[]{"Raman"});
+        nobel_physics.addRow(new String[]{"Boyle"});
+
+        Table pv = new Table(1);
+        //pv.addHeader(new String[]{"award winners this year"});
+        pv.addRow(new String[]{"Krishnamurthy"});
+        pv.addRow(new String[]{"Avinash Dixit"});
+        pv.addRow(new String[]{"Rajinikanth"});
+        pv.addRow(new String[]{"Ramoji"});
+        pv.addRow(new String[]{"Ravi Shankar"});
+        pv.addRow(new String[]{"Ambani"});
 
         long st = System.currentTimeMillis();
-        TableSemantifier semantifier = new TableSemantifier(books);
+        Table table = nobel_physics;
+        TableSemantifier semantifier = new TableSemantifier(table);
+        log.info(table.htmlPrint());
         semantifier.semantify();
+        log.info(table.htmlPrint());
         //semantifier.fetchCandidateResolutions();
         log.info("Time elapsed: " + (System.currentTimeMillis() - st) + "ms");
     }
