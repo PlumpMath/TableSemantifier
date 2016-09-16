@@ -44,6 +44,11 @@ public interface KB {
     String[] generateLemmaOf(String id);
 
     /**
+     * Given any instance of id (either property or entity), outputs the label
+     * English restricted*/
+    String getLabelOf(String id);
+
+    /**
      * Number of entities of type1 that share the relation rel with entities of type2
      * @param colType1  id of the type of column 1;
      * @param colType2  id of the type of column 2

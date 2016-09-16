@@ -13,7 +13,6 @@ import java.util.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
-import java.util.stream.DoubleStream;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
@@ -240,15 +239,23 @@ public class TableSemantifier {
                     if(fi<tableSize) {
                         int r = fi/table.numcols();
                         int c = fi%table.numcols();
-                        table.setLinksOf(r, c, IntStream.of(idxs).boxed().limit(5).map(Erc.get(r).get(c)::get).collect(Collectors.toList()));
+                        table.setLinksOf(r, c, IntStream.of(idxs).boxed().limit(5).map(Erc.get(r).get(c)::get).map(s->kb.getLabelOf(s)+"("+s+")").collect(Collectors.toList()));
                     }
                     else if(fi<tableSize+table.numcols()) {
                         int c = fi-tableSize;
-                        table.setTypesOf(c, IntStream.of(idxs).boxed().limit(5).map(Tc.get(c)::get).collect(Collectors.toList()));
+                        table.setTypesOf(c, IntStream.of(idxs).boxed().limit(5).map(Tc.get(c)::get).map(t->{
+                            String fs[] = t.split(":::");
+                            String lprop = "", lval = "";
+                            if(fs[0].startsWith("http://"))
+                                lprop = kb.getLabelOf(fs[0]);
+                            if(fs[1].startsWith("http://"))
+                                lval = kb.getLabelOf(fs[1]);
+                            return lprop+"("+fs[0]+"):::"+lval+"("+fs[1]+")";
+                        }).collect(Collectors.toList()));
                     }
                     else{
                         int c = fi-(tableSize+table.numcols());
-                        table.setRelsOf(c, IntStream.of(idxs).boxed().limit(5).map(Bcc.get(c)::get).collect(Collectors.toList()));
+                        table.setRelsOf(c, IntStream.of(idxs).boxed().limit(5).map(Bcc.get(c)::get).map(s->kb.getLabelOf(s)+"("+s+")").collect(Collectors.toList()));
                     }
                 });
         log.info(table.prettyPrint());
@@ -337,6 +344,19 @@ public class TableSemantifier {
         books.addRow(new String[]{"Conan Doyle", "Sherlock Holmes"});
         books.addRow(new String[]{"William", "Hamlet"});
         books.addRow(new String[]{"Dante", "Inferno"});
+
+        Table greek = new Table(1);
+        greek.addRow(new String[]{"Alpha"});
+        greek.addRow(new String[]{"Beta"});
+        greek.addRow(new String[]{"Gamma"});
+
+        Table cricket = new Table(1);
+        cricket.addRow(new String[]{"Sachin"});
+        cricket.addRow(new String[]{"Sehwag"});
+        cricket.addRow(new String[]{"Mr. Dependable"});
+        cricket.addRow(new String[]{"Yuvi"});
+        cricket.addRow(new String[]{"Dhoni"});
+
         long st = System.currentTimeMillis();
         TableSemantifier semantifier = new TableSemantifier(books);
         semantifier.semantify();

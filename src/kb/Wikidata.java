@@ -198,7 +198,8 @@ public class Wikidata implements KB, Serializable {
         String q = "SELECT ?property ?value " +
                 "WHERE" +
                 "{" +
-                "<" + id + "> ?property ?value . " +
+                "<" + id + "> ?property ?value ." +
+                //"FILTER (regex(str(?value), '^http://') || (LANG(?value)='en')) ."+
                 "SERVICE wikibase:label { bd:serviceParam wikibase:language \"en\" }" +
                 "}";
 
@@ -299,6 +300,42 @@ public class Wikidata implements KB, Serializable {
         return res;
     }
 
+    public String getLabelOf(String id){
+        String uid = "getLabelOf-";
+        String key = uid+id;
+        if(cache.containsKey(key))
+            return (String)cache.get(key);
+
+        boolean propID = id.contains("http://www.wikidata.org/prop/");
+
+        String q;
+        if (!propID)
+            q = "SELECT ?property ?value WHERE {" +
+                    "<" + id + "> rdfs:label ?value " +
+                    "  FILTER((LANG(?value)) = \"en\")" +
+                    "}";
+        else
+            q = "SELECT ?property ?value WHERE {" +
+                    "?p wikibase:directClaim <" + id + ">." +
+                    "?p rdfs:label ?value " +
+                    "  FILTER((LANG(?value)) = \"en\")" +
+                    "}";
+
+        String res = null;
+        try {
+            SPARQLResult result = SPARQLQuery(q);
+            if(result.results.bindings.size()>0)
+                res = result.results.bindings.get(0).value.getText();
+            else
+                log.warning("Found no label for id: "+id);
+        } catch (IOException | URISyntaxException e) {
+            log.warning("Error when fetching lemmas for id: " + id + ", either due to an ill-formed query or during parsing.\n Message from exception is: " + e.getMessage());
+            e.printStackTrace();
+        }
+        cache.put(key, res);
+        return res;
+    }
+
     public int getIntersectionOfTypesWithRel(String colType1, String colType2, String br) {
         String uid = "giotwr-";
         String key = uid+colType1+colType2+br;
@@ -340,18 +377,21 @@ public class Wikidata implements KB, Serializable {
 
         kb.getAllFacts("http://www.wikidata.org/entity/Q34660").entries().stream().map(e->e.toString()).forEach(log::info);
 
-        //number of instances of type human
-        log.info(kb.getNumberOfEntitiesOfType("http://www.wikidata.org/prop/direct/P31:::http://www.wikidata.org/entity/Q5")+"");
-        //number of arjuna award winners
-        log.info(kb.getNumberOfEntitiesOfType("http://www.wikidata.org/prop/direct/P166:::http://www.wikidata.org/entity/Q671622")+"");
-        log.info("#Inferno type: "+kb.getNumberOfEntitiesOfType("http://www.w3.org/2000/01/rdf-schema#label:::\"Inferno\"@ja"));
-
-        Stream.of(kb.generateLemmaOf("http://www.wikidata.org/prop/direct/P800")).forEach(log::info);
-        Stream.of(kb.generateLemmaOf("http://www.wikidata.org/entity/Q20")).forEach(log::info);
-
-        //Intersection between entities of type: (occupation-writer) and type: (instance of -- book) that share the relation (notable work)
-        log.info(kb.getIntersectionOfTypesWithRel("http://www.wikidata.org/prop/direct/P106:::http://www.wikidata.org/entity/Q36180","http://www.wikidata.org/prop/direct/P31:::http://www.wikidata.org/entity/Q571","http://www.wikidata.org/prop/direct/P800")+"");
-        log.info(kb.getIntersectionOfTypesWithRel("http://www.wikidata.org/prop/direct/P106:::http://www.wikidata.org/entity/Q36180","http://www.w3.org/2000/01/rdf-schema#label:::\"Inferno\"@cs","http://www.wikidata.org/prop/direct/P800")+"");
-        ((Wikidata)kb).writeSerialized();
+//        //number of instances of type human
+//        log.info(kb.getNumberOfEntitiesOfType("http://www.wikidata.org/prop/direct/P31:::http://www.wikidata.org/entity/Q5")+"");
+//        //number of arjuna award winners
+//        log.info(kb.getNumberOfEntitiesOfType("http://www.wikidata.org/prop/direct/P166:::http://www.wikidata.org/entity/Q671622")+"");
+//        log.info("#Inferno type: "+kb.getNumberOfEntitiesOfType("http://www.w3.org/2000/01/rdf-schema#label:::\"Inferno\"@ja"));
+//
+//        Stream.of(kb.generateLemmaOf("http://www.wikidata.org/prop/direct/P800")).forEach(log::info);
+//        Stream.of(kb.generateLemmaOf("http://www.wikidata.org/entity/Q20")).forEach(log::info);
+//
+//        //Intersection between entities of type: (occupation-writer) and type: (instance of -- book) that share the relation (notable work)
+//        log.info(kb.getIntersectionOfTypesWithRel("http://www.wikidata.org/prop/direct/P106:::http://www.wikidata.org/entity/Q36180","http://www.wikidata.org/prop/direct/P31:::http://www.wikidata.org/entity/Q571","http://www.wikidata.org/prop/direct/P800")+"");
+//        log.info(kb.getIntersectionOfTypesWithRel("http://www.wikidata.org/prop/direct/P106:::http://www.wikidata.org/entity/Q36180","http://www.w3.org/2000/01/rdf-schema#label:::\"Inferno\"@cs","http://www.wikidata.org/prop/direct/P800")+"");
+//
+//        log.info(kb.getLabelOf("http://www.wikidata.org/entity/Q671622"));
+//        log.info(kb.getLabelOf("http://www.wikidata.org/prop/direct/P800"));
+//        ((Wikidata)kb).writeSerialized();
     }
 }

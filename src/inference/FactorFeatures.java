@@ -133,7 +133,12 @@ public class FactorFeatures {
         if(!props.containsEntry(prop,value))
             return DEF_VALUE;
 
-        f[0] = 1.0;///(1+kb.getNumberOfEntitiesOfType(type));
+        int ne = kb.getNumberOfEntitiesOfType(type);
+        log.info("Num Entities of type: "+type+" is "+ne);
+
+        if(ne>=100)
+            f[0] = 1.0/Math.log(kb.getNumberOfEntitiesOfType(type));
+        else f[0] = 0;
 
         return computePotential(f,w);
     }
