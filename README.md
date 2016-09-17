@@ -22,6 +22,8 @@ A table is added with five most likely annotations for each of: cell text, heade
 
 ###Authors and their notable work.
 <table>
+<thead><th>Input</th><th>Output</th></thead>
+<tbody>
 <tr>
 <td>
 <table style='display:inline-block'>
@@ -55,10 +57,13 @@ A table is added with five most likely annotations for each of: cell text, heade
 </table>
 </td>
 </tr>
+</tbody>
+</table>
 Possible relations between column 0 and 1 shown in the books table is <a href='[http://www.wikidata.org/prop/direct/P800, http://www.wikidata.org/prop/direct/P1445, http://www.wikidata.org/prop/direct/P31, http://www.wikidata.org/prop/direct/P1080, http://www.wikidata.org/prop/direct/P1441]'>["notable work"@en, "fictional universe described in"@en, "instance of"@en, "from fictional universe"@en, "present in work"@en]</a>
 
 ###Indian Cricketers
 <table>
+<thead><th>Input</th><th>Output</th></thead>
 <tr>
 <td>
 <table>
@@ -91,6 +96,7 @@ Possible relations between column 0 and 1 shown in the books table is <a href='[
 
 ###PadmaVibhushan winners in 2016 (except Krishnamurthy)
 <table>
+<thead><th>Input</th><th>Output</th></thead>
 <tr>
 <td>
 <table>
@@ -123,6 +129,7 @@ Possible relations between column 0 and 1 shown in the books table is <a href='[
 
 ###Nobel prize winning physicists 
 <table>
+<thead><th>Input</th><th>Output</th></thead>
 <tr>
 <td>
 <table>
