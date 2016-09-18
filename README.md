@@ -166,7 +166,7 @@ On my (10Mbps) network and on my 2.5Ghz Intelx64 Core i5 machine, the books tabl
 
 ##Need to fix
 1. The caching implemented in Wikidata has issues. It sometimes throws java.io.OptionalDataException and hence not read completely because of which some requests are not cached at all.  
-2. The suggestions retrieved in the initial stage of pipeline based on a cell text are crucial. Suggestions for entities work fine but fails for nouns such as *red*, *alpha*(greek alphabet) etc. One possible fix is to leverage the column text if available to direct the search query.  
+2. The suggestions retrieved in the initial stage of pipeline based on a cell text are crucial. Suggestions for entities work fine but fails for nouns such as *red*, *alpha*(greek alphabet) etc. One possible fix is to leverage the column text in header if available to direct the search query. It should be possible to fetch suggestions in the context of other cells in the column. For example, corect suggestions for *Alpha* can be fetched from the fact that it appears in the same column as *Beta* and *Gamma*.  
 3. Several corner cases are not handled such as when processing requests to knowledge base or when printing a table etc.
 4. Needs a lot more documentation and proper interface for easier access.
 5. The system fetches suggestions for text spanning the entire cell, it is straight forward to extend it to select the right chunk in cell text. For example, cell text *Stacy loves red color* should be treated as two cells since there are two possible chunks, *Stacy* and *red*.
