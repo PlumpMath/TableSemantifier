@@ -2,7 +2,7 @@
 Annotates a table with type of each column, binary relation between columns and disambiguation of cell text to Knowledgebase.  
 The software adds meaning to your tables.
 
-##Introduction 
+## Introduction 
 The implementation is loosly based on [Annotating and Searching Web Tables Using Entities, Types and Relationships](http://vldb.org/pvldb/vldb2010/papers/R118.pdf), a 2010 VLDB publication. 
 I did not perform any training for parameter learning as explained in the publication.
 I like it more when a data-agnostic model performs equally well. 
@@ -10,17 +10,17 @@ Besides, I am not totally convinced why training is required except for upping t
 Also, unlike the system described in the paper that uses YAGO, this uses Wikidata instead.
 Because, Freebase recently migrated to Wikidata (need I say more?)
 
-##Usage
+## Usage
 The system works by making several requests to Wikidata in parallel and can have choking effect on the endpoint. Please use it sparingly. 
 If you want to semantify large number of tables, then consider setting up your version of the Server.
 It is nice of Wikidata to not put query limits, so let's behave!  
 Start with `TableSemantifier.main` for some test examples. In the meanwhile, I will work towards a better API. 
 
-##Examples
+## Examples
 Some example tables and their semantified versions are shown below.
 A table is added with five most likely annotations for each of: cell text, headers and binary relations.
 
-###Authors and their notable work.
+### Authors and their notable work.
 <table>
 <thead><th>Input</th><th>Output</th></thead>
 <tbody>
@@ -61,7 +61,7 @@ A table is added with five most likely annotations for each of: cell text, heade
 </table>
 Possible relations between column 0 and 1 shown in the books table is <a href='[http://www.wikidata.org/prop/direct/P800, http://www.wikidata.org/prop/direct/P1445, http://www.wikidata.org/prop/direct/P31, http://www.wikidata.org/prop/direct/P1080, http://www.wikidata.org/prop/direct/P1441]'>["notable work"@en, "fictional universe described in"@en, "instance of"@en, "from fictional universe"@en, "present in work"@en]</a>
 
-###Indian Cricketers
+### Indian Cricketers
 <table>
 <thead><th>Input</th><th>Output</th></thead>
 <tr>
@@ -94,7 +94,7 @@ Possible relations between column 0 and 1 shown in the books table is <a href='[
 </tr>
 </table>
 
-###PadmaVibhushan winners in 2016 (except Krishnamurthy)
+### PadmaVibhushan winners in 2016 (except Krishnamurthy)
 <table>
 <thead><th>Input</th><th>Output</th></thead>
 <tr>
@@ -127,7 +127,7 @@ Possible relations between column 0 and 1 shown in the books table is <a href='[
 </tr>
 </table>
 
-###Nobel prize winning physicists 
+### Nobel prize winning physicists 
 <table>
 <thead><th>Input</th><th>Output</th></thead>
 <tr>
@@ -158,13 +158,13 @@ Possible relations between column 0 and 1 shown in the books table is <a href='[
 </tr>
 </table>
 
-##Time complexity
+## Time complexity
 The bottleneck is in accessing the network to fetch related content. 
 The requests to the network are all parallelized and cached in this implementation. 
 The typical running time varies depending on your machine and network. 
 On my (10Mbps) network and on my 2.5Ghz Intelx64 Core i5 machine, the books table took around 2 minutes and the rest took less than a minute.  
 
-##Need to fix
+## Need to fix
 1. The caching implemented in Wikidata has issues. It sometimes throws java.io.OptionalDataException and hence not read completely because of which some requests are not cached at all.  
 2. The suggestions retrieved in the initial stage of pipeline based on a cell text are crucial. Suggestions for entities work fine but fails for nouns such as *red*, *alpha*(greek alphabet) etc. One possible fix is to leverage the column text in header if available to direct the search query. It should be possible to fetch suggestions in the context of other cells in the column. For example, corect suggestions for *Alpha* can be fetched from the fact that it appears in the same column as *Beta* and *Gamma*.  
 3. Several corner cases are not handled such as when processing requests to knowledge base or when printing a table etc.
